@@ -6,7 +6,7 @@ const submissionSchema = new mongoose.Schema({
    problemId: { type: Number, required: true },
    code: { type: String, required: false },
    status: { type: String, required: true },
-   time: { type: Date, required: true }
+   time: { type: String, required: true }
 });
 
 export default mongoose.models.Submission || mongoose.model("Submissions", submissionSchema, "Submissions");

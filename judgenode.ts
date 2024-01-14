@@ -1,11 +1,12 @@
-import fs from "fs";
+import * as fs from "fs";
 import { Kafka } from 'kafkajs';
-import { exec, spawn } from 'child_process';
+import { exec } from 'child_process';
 import connectDB from './middleware/connectdb'
-import submissionSchema from './models/submission';
-import systemDataSchema from './models/systemData';
+import { exit } from "process";
 
 require('dotenv').config({ path: ".env.local" });
+
+const inputFile = "input.txt";
 
 async function run() {
    try {
@@ -13,7 +14,7 @@ async function run() {
 
       const kafka = new Kafka({
          "clientId": "kafka",
-         "brokers": [`${process.env.BROKER_URL}`]
+         "brokers": [`${process.env.BROKER_URL || "localhost:9092"}`]
       });
 
       const consumer = kafka.consumer({
@@ -31,134 +32,133 @@ async function run() {
 
       await consumer.run({
          "eachMessage": async (result: any) => {
-            const lang = result.partition;
             const message = JSON.parse(result.message.value);
 
-            fs.writeFileSync(`${__dirname}/cpp/code.cpp`, message.code);
+            const input = `3
+            0 1
+            1 2
+            0 1`;
 
-            exec(`g++ ${__dirname}/cpp/code.cpp`, async (err, stdout, stderr) => {
-               if (err) {
-                  // Compile Error
-                  const newSubmission = new submissionSchema({
-                     submissionId: message.submissionId,
-                     user: message.userEmail,
-                     problemId: message.problemId,
-                     code: message.code,
-                     status: "CE",
-                     time: message.time
-                  })
+            const expectedOutput = `0 1\n1 2\n0 1\n`;
+            
+            fs.writeFileSync(`${__dirname}/cpp/input.txt`, input, {
+               encoding: "utf-8"
+            });
 
-                  await newSubmission.save();
-          
-                  await systemDataSchema.findOneAndUpdate({
-                     title: "submissions"
-                  }, 
-                  
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
+            fs.writeFileSync(`${__dirname}/cpp/code.cpp`, message.code, {
+               encoding: "utf-8"
+            });
+            
+            exec(`${__dirname}/cpp/cpp.sh 2 1000000`, (error, outputContent, stderr) => {
+               if (error) {
+                  console.log("Could not execute the script");
+                  console.log(error);
                   return;
                }
 
                if (stderr) {
-                  console.log("stderr");
-
-                  // Runtime Error
-                  const newSubmission = new submissionSchema({
-                     submissionId: message.submissionId,
-                     user: message.userEmail,
-                     problemId: message.problemId,
-                     code: message.code,
-                     status: "RE",
-                     time: message.time
-                  })
-
-                  await newSubmission.save();
-          
-                  await systemDataSchema.findOneAndUpdate({
-                     title: "submissions"
-                  }, 
-                  
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
-
-                  return;
-               }
-
-               const childProcess = spawn(`${__dirname}/a.exe`);
-
-               let verdict = "";
-               
-               childProcess.stdout.on('data', (data) => {
-                  console.log(`Output: ${data}`);
-
-                  if (data == "4") {
-                     verdict = "AC";
+                  if (stderr === "CE\n" || stderr === "RE\n") {
+                     console.log(stderr);
+                     console.log(outputContent);
                   } else {
-                     verdict = "WA";
+                     console.log(stderr);
                   }
-               });
+               } else if (expectedOutput === outputContent) {
+                  console.log('AC');
+               } else {
+                  console.log('WA');
+               }
+            });
 
-               childProcess.stderr.on('data', async (data) => {
-                  console.error(`Error: ${data}`);
-                  
-                  // Runtime Error
-                  const newSubmission = new submissionSchema({
-                     submissionId: message.submissionId,
-                     user: message.userEmail,
-                     problemId: message.problemId,
-                     code: message.code,
-                     status: "RE",
-                     time: message.time
-                  })
+            // exec(`g++ ${__dirname}/code.cpp`, async (err, stdout, stderr) => {
+            //    if (err) {
+            //       // Compilation Error
+            //       const newSubmission = new submissionSchema({
+            //          submissionId: message.submissionId,
+            //          user: message.userEmail,
+            //          problemId: message.problemId,
+            //          code: message.code,
+            //          status: "CE",
+            //          time: message.time
+            //       });
 
-                  await newSubmission.save();
-          
-                  await systemDataSchema.findOneAndUpdate({
-                     title: "submissions"
-                  }, 
-                  
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
-               });
- 
-               childProcess.on('close', async (code) => {
-                  const newSubmission = new submissionSchema({
-                     submissionId: message.submissionId,
-                     user: message.userEmail,
-                     problemId: message.problemId,
-                     code: message.code,
-                     status: verdict,
-                     time: message.time
-                  })
+            //       await newSubmission.save();
 
-                  await newSubmission.save();
-          
-                  await systemDataSchema.findOneAndUpdate({
-                     title: "submissions"
-                  }, 
-                  
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
-                  console.log(`Child process exited with code ${code}`);
-               });
-            })
+            //       await systemDataSchema.findOneAndUpdate(
+            //          {
+            //             title: "submissions"
+            //          },
+
+            //          {
+            //             $inc: {
+            //                nextSubmissionId: 1
+            //             }
+            //          });
+            //       return;
+            //    }
+
+            //    let verdict = null;
+            //    let timeout = false;
+            //    let runtimeError = false;
+
+            //    let programOutput = "";
+
+            //    let process = exec(`${__dirname}/a.exe`, {
+            //       input: fs.createReadStream(inputFile),
+            //       encoding: 'utf8'
+            //    }, async (error, stdout, stderr) => {
+            //       if (error) {
+            //          runtimeError = true;
+            //          return;
+            //       }
+
+            //       programOutput = stdout;
+            //    });
+
+            //    let timerId = setTimeout(() => {
+            //       process.kill();
+            //       timeout = true;
+            //    }, message.timeLimit)
+
+            //    process.on('exit', async (exitCode) => {
+            //       clearTimeout(timerId);
+            //       if (runtimeError) {
+            //          verdict = "RE";
+            //       } else if (timeout) {
+            //          verdict = "TLE";
+            //       } else if (programOutput === message.expectedOutput) {
+            //          verdict = "AC";
+            //       } else {
+            //          verdict = "WA";
+            //       }
+
+            //       const newSubmission = new submissionSchema({
+            //          submissionId: message.submissionId,
+            //          user: message.userEmail,
+            //          problemId: message.problemId,
+            //          code: message.code,
+            //          status: verdict,
+            //          time: message.time
+            //       })
+
+            //       await newSubmission.save();
+
+            //       await systemDataSchema.findOneAndUpdate({
+            //          title: "submissions"
+            //       },
+            //          {
+            //             $inc: {
+            //                nextSubmissionId: 1
+            //             }
+            //          });
+            //    })
+            // });
          }
-      })
+      });
    } catch (error) {
-      console.log("Something went wrong.");
+      console.log("CPP Judge Node Crashed.");
       console.log(error);
+      exit(1);
    }
 }
 
