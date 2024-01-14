@@ -8,17 +8,17 @@ fi
 timeout_duration=$1
 memory_limit=$2
 
-g++ -o ./cpp/output.out ./cpp/code.cpp 2> ./cpp/log.txt
+g++ -o ./runners/output.out ./runners/code.cpp 2> ./runners/log.txt
 
 # Check if compilation was successful
 if [ $? -eq 0 ]; then
     ulimit -v  "${memory_limit}"
-    timeout "${timeout_duration}" ./cpp/output.out < ./cpp/input.txt 1> ./cpp/program_output.txt 2> ./cpp/log.txt
+    timeout "${timeout_duration}" ./runners/output.out < ./runners/input.txt 1> ./runners/program_output.txt 2> ./runners/log.txt
 
     exit_status=$?
 
     if [ $exit_status -eq 0 ]; then
-        cat ./cpp/program_output.txt 1>&1
+        cat ./runners/program_output.txt 1>&1
         exit 0 
     fi
 
@@ -35,8 +35,8 @@ if [ $? -eq 0 ]; then
     fi
 
     echo "RE" 1>&2
-    cat ./cpp/log.txt 1>&1
+    cat ./runners/log.txt 1>&1
 else
     echo "CE" 1>&2
-    cat ./cpp/log.txt 1>&1
+    cat ./runners/log.txt 1>&1
 fi

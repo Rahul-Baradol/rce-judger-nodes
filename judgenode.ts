@@ -3,10 +3,10 @@ import { Kafka } from 'kafkajs';
 import { exec } from 'child_process';
 import connectDB from './middleware/connectdb'
 import { exit } from "process";
+import submissionModel from './models/submission';
+import systemDataModel from './models/systemData';
 
 require('dotenv').config({ path: ".env.local" });
-
-const inputFile = "input.txt";
 
 async function run() {
    try {
@@ -33,23 +33,39 @@ async function run() {
       await consumer.run({
          "eachMessage": async (result: any) => {
             const message = JSON.parse(result.message.value);
-
-            const input = `3
-            0 1
-            1 2
-            0 1`;
-
-            const expectedOutput = `0 1\n1 2\n0 1\n`;
             
-            fs.writeFileSync(`${__dirname}/cpp/input.txt`, input, {
+            const submissionId = message.submissionId;
+            const problemTitle = message.problemTitle;
+            const userEmail = message.userEmail;
+            const time = message.time;
+
+            const logicCode = message.code;
+            const lang = message.lang;
+            const input = message.input;
+            const expectedOutput = message.expectedOutput;
+
+            const driverHead = message.driverHead;
+            const driverMain = message.driverMain;
+
+            const timeLimit = message.timeLimit_sec;
+            const memoryLimit = message.memoryLimit_kb;
+
+            if (!(driverHead && logicCode && driverMain)) {
+               console.log("Code not complete");
+               return;
+            }
+
+            const code = driverHead + logicCode + driverMain;
+
+            fs.writeFileSync(`${__dirname}/runners/input.txt`, input, {
                encoding: "utf-8"
             });
 
-            fs.writeFileSync(`${__dirname}/cpp/code.cpp`, message.code, {
+            fs.writeFileSync(`${__dirname}/runners/code.${lang}`, code, {
                encoding: "utf-8"
             });
-            
-            exec(`${__dirname}/cpp/cpp.sh 2 1000000`, (error, outputContent, stderr) => {
+
+            exec(`${__dirname}/runners/${lang}.sh ${timeLimit} ${memoryLimit}`, async (error, outputContent, stderr) => {
                if (error) {
                   console.log("Could not execute the script");
                   console.log(error);
@@ -58,101 +74,97 @@ async function run() {
 
                if (stderr) {
                   if (stderr === "CE\n" || stderr === "RE\n") {
-                     console.log(stderr);
-                     console.log(outputContent);
+                     const newSubmission = new submissionModel({
+                        submissionId: submissionId,
+                        user: userEmail,
+                        problemTitle: problemTitle,
+                        code: logicCode,
+                        status: `${stderr === "CE\n" ? "CE" : "RE"}`,
+                        message: `${outputContent}`,
+                        time: time
+                     });
+
+                     await newSubmission.save();
+
+                     await systemDataModel.findOneAndUpdate(
+                     {
+                        title: "submissions"
+                     },
+
+                     {
+                        $inc: {
+                           nextSubmissionId: 1
+                        }
+                     });
                   } else {
-                     console.log(stderr);
+                     const newSubmission = new submissionModel({
+                        submissionId: submissionId,
+                        user: userEmail,
+                        problemTitle: problemTitle,
+                        code: logicCode,
+                        status: `${stderr === "TLE\n" ? "TLE" : "MLE"}`,
+                        time: time
+                     });
+
+                     await newSubmission.save();
+
+                     await systemDataModel.findOneAndUpdate(
+                     {
+                        title: "submissions"
+                     },
+
+                     {
+                        $inc: {
+                           nextSubmissionId: 1
+                        }
+                     });
                   }
                } else if (expectedOutput === outputContent) {
-                  console.log('AC');
+                  const newSubmission = new submissionModel({
+                     submissionId: submissionId,
+                     user: userEmail,
+                     problemTitle: problemTitle,
+                     code: logicCode,
+                     status: `AC`,
+                     time: time
+                  });
+
+                  await newSubmission.save();
+
+                  await systemDataModel.findOneAndUpdate(
+                  {
+                     title: "submissions"
+                  },
+
+                  {
+                     $inc: {
+                        nextSubmissionId: 1
+                     }
+                  });
                } else {
-                  console.log('WA');
+                  const newSubmission = new submissionModel({
+                     submissionId: submissionId,
+                     user: userEmail,
+                     problemTitle: problemTitle,
+                     code: logicCode,
+                     status: `WA`,
+                     time: time
+                  });
+
+                  await newSubmission.save();
+
+                  await systemDataModel.findOneAndUpdate(
+                  {
+                     title: "submissions"
+                  },
+
+                  {
+                     $inc: {
+                        nextSubmissionId: 1
+                     }
+                  });
                }
             });
-
-            // exec(`g++ ${__dirname}/code.cpp`, async (err, stdout, stderr) => {
-            //    if (err) {
-            //       // Compilation Error
-            //       const newSubmission = new submissionSchema({
-            //          submissionId: message.submissionId,
-            //          user: message.userEmail,
-            //          problemId: message.problemId,
-            //          code: message.code,
-            //          status: "CE",
-            //          time: message.time
-            //       });
-
-            //       await newSubmission.save();
-
-            //       await systemDataSchema.findOneAndUpdate(
-            //          {
-            //             title: "submissions"
-            //          },
-
-            //          {
-            //             $inc: {
-            //                nextSubmissionId: 1
-            //             }
-            //          });
-            //       return;
-            //    }
-
-            //    let verdict = null;
-            //    let timeout = false;
-            //    let runtimeError = false;
-
-            //    let programOutput = "";
-
-            //    let process = exec(`${__dirname}/a.exe`, {
-            //       input: fs.createReadStream(inputFile),
-            //       encoding: 'utf8'
-            //    }, async (error, stdout, stderr) => {
-            //       if (error) {
-            //          runtimeError = true;
-            //          return;
-            //       }
-
-            //       programOutput = stdout;
-            //    });
-
-            //    let timerId = setTimeout(() => {
-            //       process.kill();
-            //       timeout = true;
-            //    }, message.timeLimit)
-
-            //    process.on('exit', async (exitCode) => {
-            //       clearTimeout(timerId);
-            //       if (runtimeError) {
-            //          verdict = "RE";
-            //       } else if (timeout) {
-            //          verdict = "TLE";
-            //       } else if (programOutput === message.expectedOutput) {
-            //          verdict = "AC";
-            //       } else {
-            //          verdict = "WA";
-            //       }
-
-            //       const newSubmission = new submissionSchema({
-            //          submissionId: message.submissionId,
-            //          user: message.userEmail,
-            //          problemId: message.problemId,
-            //          code: message.code,
-            //          status: verdict,
-            //          time: message.time
-            //       })
-
-            //       await newSubmission.save();
-
-            //       await systemDataSchema.findOneAndUpdate({
-            //          title: "submissions"
-            //       },
-            //          {
-            //             $inc: {
-            //                nextSubmissionId: 1
-            //             }
-            //          });
-            //    })
-            // });
          }
       });
    } catch (error) {
