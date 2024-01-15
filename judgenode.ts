@@ -51,21 +51,41 @@ async function run() {
             const memoryLimit = message.memoryLimit_kb;
 
             if (!(driverHead && logicCode && driverMain)) {
-               console.log("Code not complete");
+               const newSubmission = new submissionModel({
+                  submissionId: submissionId,
+                  user: userEmail,
+                  problemTitle: problemTitle,
+                  status: `CE`,
+                  message: "No code submitted by the user",
+                  time: time
+               });
+
+               await newSubmission.save();
+
+               await systemDataModel.findOneAndUpdate(
+               {
+                  title: "submissions"
+               },
+
+               {
+                  $inc: {
+                     nextSubmissionId: 1
+                  }
+               });
                return;
             }
 
             const code = driverHead + logicCode + driverMain;
 
-            fs.writeFileSync(`${__dirname}/runners/input.txt`, input, {
+            fs.writeFileSync(`${__dirname}/runners/data/input.txt`, input, {
                encoding: "utf-8"
             });
 
-            fs.writeFileSync(`${__dirname}/runners/code.${lang}`, code, {
+            fs.writeFileSync(`${__dirname}/runners/code/code.${lang}`, code, {
                encoding: "utf-8"
             });
 
-            exec(`${__dirname}/runners/${lang}.sh ${timeLimit} ${memoryLimit}`, async (error, outputContent, stderr) => {
+            exec(`${__dirname}/runners/scripts/${lang}.sh ${timeLimit} ${memoryLimit}`, async (error, outputContent, stderr) => {
                if (error) {
                   console.log("Could not execute the script");
                   console.log(error);
@@ -83,19 +103,7 @@ async function run() {
                         message: `${outputContent}`,
                         time: time
                      });
-
                      await newSubmission.save();
-
-                     await systemDataModel.findOneAndUpdate(
-                     {
-                        title: "submissions"
-                     },
-
-                     {
-                        $inc: {
-                           nextSubmissionId: 1
-                        }
-                     });
                   } else {
                      const newSubmission = new submissionModel({
                         submissionId: submissionId,
@@ -105,65 +113,31 @@ async function run() {
                         status: `${stderr === "TLE\n" ? "TLE" : "MLE"}`,
                         time: time
                      });
-
                      await newSubmission.save();
-
-                     await systemDataModel.findOneAndUpdate(
-                     {
-                        title: "submissions"
-                     },
-
-                     {
-                        $inc: {
-                           nextSubmissionId: 1
-                        }
-                     });
                   }
-               } else if (expectedOutput === outputContent) {
-                  const newSubmission = new submissionModel({
-                     submissionId: submissionId,
-                     user: userEmail,
-                     problemTitle: problemTitle,
-                     code: logicCode,
-                     status: `AC`,
-                     time: time
-                  });
-
-                  await newSubmission.save();
-
-                  await systemDataModel.findOneAndUpdate(
-                  {
-                     title: "submissions"
-                  },
-
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
                } else {
                   const newSubmission = new submissionModel({
                      submissionId: submissionId,
                      user: userEmail,
                      problemTitle: problemTitle,
                      code: logicCode,
-                     status: `WA`,
+                     status: `${(expectedOutput === outputContent) ? "AC" : "WA"}`,
                      time: time
                   });
 
                   await newSubmission.save();
-
-                  await systemDataModel.findOneAndUpdate(
-                  {
-                     title: "submissions"
-                  },
-
-                  {
-                     $inc: {
-                        nextSubmissionId: 1
-                     }
-                  });
                }
+
+               await systemDataModel.findOneAndUpdate(
+               {
+                  title: "submissions"
+               },
+
+               {
+                  $inc: {
+                     nextSubmissionId: 1
+                  }
+               });
             });
          }
       });
