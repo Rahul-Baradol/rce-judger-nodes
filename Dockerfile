@@ -15,10 +15,10 @@ RUN npm run build
 
 CMD ["npm", "start"]
 
-# Judger node for python
-FROM alpine:latest AS py
+# Judger node for java
+FROM alpine:latest AS java
 
-RUN apk --update --no-cache add python3 py3-pip nodejs npm
+RUN apk --update --no-cache add openjdk11 nodejs npm
 
 WORKDIR /usr/src/app
 

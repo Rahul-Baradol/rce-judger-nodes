@@ -9,11 +9,12 @@ import systemDataModel from './models/systemData';
 require('dotenv').config({ path: ".env.local" });
 
 async function run() {
+   const lang = process.env.LANG;
    try {
       await connectDB();
 
       const kafka = new Kafka({
-         "clientId": "kafka",
+         "clientId": `${lang}`,
          "brokers": [`${process.env.BROKER_URL || "localhost:9092"}`]
       });
 
@@ -26,9 +27,11 @@ async function run() {
       console.log("Connected!!");
 
       await consumer.subscribe({
-         "topic": `Submission`,
+         "topic": `${lang || "cpp"}`,
          "fromBeginning": false
       })
+
+      console.log(lang);
 
       await consumer.run({
          "eachMessage": async (result: any) => {
@@ -40,7 +43,6 @@ async function run() {
             const time = message.time;
 
             const logicCode = message.code;
-            const lang = message.lang;
             const input = message.input;
             const expectedOutput = message.expectedOutput;
 
@@ -81,12 +83,12 @@ async function run() {
                encoding: "utf-8"
             });
 
-            fs.writeFileSync(`${__dirname}/runners/code/code.${lang}`, code, {
+            fs.writeFileSync(`${__dirname}/runners/code/Code.${lang}`, code, {
                encoding: "utf-8"
             });
 
             exec(`${__dirname}/runners/scripts/${lang}.sh ${timeLimit} ${memoryLimit}`, async (error, outputContent, stderr) => {
-               if (error) {
+               if (error && !stderr) {
                   console.log("Could not execute the script");
                   console.log(error);
                   return;
@@ -98,6 +100,7 @@ async function run() {
                         submissionId: submissionId,
                         user: userEmail,
                         problemTitle: problemTitle,
+                        lang: lang,
                         code: logicCode,
                         status: `${stderr === "CE\n" ? "CE" : "RE"}`,
                         message: `${outputContent}`,
@@ -109,6 +112,7 @@ async function run() {
                         submissionId: submissionId,
                         user: userEmail,
                         problemTitle: problemTitle,
+                        lang: lang,
                         code: logicCode,
                         status: `${stderr === "TLE\n" ? "TLE" : "MLE"}`,
                         time: time
@@ -120,6 +124,7 @@ async function run() {
                      submissionId: submissionId,
                      user: userEmail,
                      problemTitle: problemTitle,
+                     lang: lang,
                      code: logicCode,
                      status: `${(expectedOutput === outputContent) ? "AC" : "WA"}`,
                      time: time
@@ -142,7 +147,7 @@ async function run() {
          }
       });
    } catch (error) {
-      console.log("CPP Judge Node Crashed.");
+      console.log(`Judge Node (${lang}) Crashed`);
       console.log(error);
       exit(1);
    }

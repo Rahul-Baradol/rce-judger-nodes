@@ -8,12 +8,12 @@ fi
 timeout_duration=$1
 memory_limit=$2
 
-g++ -o ./runners/binary/output.out ./runners/code/Code.cpp 2> ./runners/data/log.txt
+javac -d ./runners/binary/ ./runners/code/Code.java 2> ./runners/data/log.txt
 
 # Check if compilation was successful
 if [ $? -eq 0 ]; then
     ulimit -v  "${memory_limit}"
-    timeout "${timeout_duration}" ./runners/binary/output.out < ./runners/data/input.txt 1> ./runners/data/program_output.txt 2> ./runners/data/log.txt
+    timeout "${timeout_duration}" java -cp ./runners/binary Code < ./runners/data/input.txt 1> ./runners/data/program_output.txt 2> ./runners/data/log.txt
 
     exit_status=$?
 
